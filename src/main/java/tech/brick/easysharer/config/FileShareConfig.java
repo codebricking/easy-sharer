@@ -20,6 +20,9 @@ public class FileShareConfig implements CommandLineRunner {
     
     @Value("${server.port:8080}")
     private String serverPort;
+    
+    @Value("${file.upload.enabled:false}")
+    private boolean uploadEnabled;
 
     @Override
     public void run(String... args) throws Exception {
@@ -64,8 +67,9 @@ public class FileShareConfig implements CommandLineRunner {
                                "- 浏览文件和文件夹\n" +
                                "- 一键下载文件\n" +
                                "- 生成分享链接\n" +
-                               "- 简洁直观的Web界面\n\n" +
-                               "将您要分享的文件放在此目录中即可开始使用。\n\n" +
+                               "- 简洁直观的Web界面\n" +
+                               (uploadEnabled ? "- 文件上传功能\n" : "") +
+                               "\n将您要分享的文件放在此目录中即可开始使用。\n\n" +
                                "祝您使用愉快！";
                 Files.write(readmePath, content.getBytes("UTF-8"));
                 log.info("创建示例文件: {}", readmePath.getFileName());
@@ -93,13 +97,49 @@ public class FileShareConfig implements CommandLineRunner {
      * 记录启动信息
      */
     private void logStartupInfo() {
-        String localIp = NetworkUtils.getLocalIpAddress();
+        // 获取所有局域网IP地址
+        java.util.List<String> allIps = NetworkUtils.getAllLocalIpAddresses();
+        String primaryIp = allIps.isEmpty() ? "localhost" : allIps.get(0);
         
         log.info("=".repeat(60));
         log.info("Easy Sharer 启动成功!");
         log.info("共享目录: {}", Paths.get(rootPath).toAbsolutePath());
         log.info("本地访问: http://localhost:{}", serverPort);
-        log.info("局域网访问: http://{}:{}", localIp, serverPort);
+        
+        if (allIps.isEmpty()) {
+            log.warn("未找到局域网IP地址，只能本地访问");
+        } else {
+            log.info("局域网访问地址 (按优先级排序):");
+            for (int i = 0; i < allIps.size(); i++) {
+                String ip = allIps.get(i);
+                String url = "http://" + ip + ":" + serverPort;
+                if (i == 0) {
+                    log.info("  推荐: {} ← 优先使用此地址", url);
+                } else {
+                    log.info("  备选: {}", url);
+                }
+            }
+            
+            // 给出使用建议
+            if (allIps.size() > 1) {
+                log.info("提示: 如果主要地址无法访问，请尝试备选地址");
+                log.info("提示: 确保手机/设备连接到相同的WiFi网络");
+            }
+        }
+        
+        log.info("文件上传功能: {}", uploadEnabled ? "已启用" : "已禁用");
+        if (!uploadEnabled) {
+            log.info("启用上传功能: --file.upload.enabled=true");
+        }
+        
+        // 网络故障排除提示
+        if (!allIps.isEmpty()) {
+            log.info("故障排除:");
+            log.info("  - 如无法访问，请检查Windows防火墙设置");
+            log.info("  - 确保8080端口未被其他程序占用");
+            log.info("  - 某些路由器可能启用了设备隔离功能");
+        }
+        
         log.info("=".repeat(60));
     }
 } 

@@ -34,3 +34,6 @@ build/
 /.xcodemap/
 /.mvn/
 /shared/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/node/node_modules/
