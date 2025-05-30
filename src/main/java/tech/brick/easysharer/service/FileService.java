@@ -78,18 +78,38 @@ public class FileService {
      * 获取文件资源用于下载
      */
     public Resource getFileAsResource(String relativePath) throws MalformedURLException {
+        log.info("FileService.getFileAsResource - 相对路径: {}", relativePath);
+        
         Path basePath = Paths.get(rootPath).toAbsolutePath().normalize();
+        log.info("FileService.getFileAsResource - 基础路径: {}", basePath);
+        
         Path filePath = basePath.resolve(relativePath).normalize();
+        log.info("FileService.getFileAsResource - 完整文件路径: {}", filePath);
         
         // 安全检查
         if (!filePath.startsWith(basePath)) {
+            log.error("安全检查失败 - 文件路径不在基础路径内: 文件={}, 基础={}", filePath, basePath);
             throw new SecurityException("不允许访问根路径外的文件");
+        }
+        
+        // 检查文件是否存在
+        if (!Files.exists(filePath)) {
+            log.error("文件不存在: {}", filePath);
+            throw new RuntimeException("文件不存在: " + relativePath);
+        }
+        
+        // 检查是否为文件
+        if (!Files.isRegularFile(filePath)) {
+            log.error("路径不是文件: {}", filePath);
+            throw new RuntimeException("路径不是文件: " + relativePath);
         }
         
         Resource resource = new UrlResource(filePath.toUri());
         if (resource.exists() && resource.isReadable()) {
+            log.info("文件资源创建成功: {}", filePath);
             return resource;
         } else {
+            log.error("文件资源创建失败或不可读: {}", filePath);
             throw new RuntimeException("文件不存在或不可读: " + relativePath);
         }
     }

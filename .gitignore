@@ -37,3 +37,4 @@ build/
 /frontend/node_modules/
 /frontend/dist/
 /frontend/node/node_modules/
+/frontend/node/

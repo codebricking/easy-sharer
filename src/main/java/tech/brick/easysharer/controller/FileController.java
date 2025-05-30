@@ -101,34 +101,125 @@ public class FileController {
      */
     @GetMapping("/download/**")
     public ResponseEntity<Resource> downloadFile(HttpServletRequest request) {
-        // 从请求路径中提取文件路径
-        String requestPath = request.getRequestURI();
-        String filePath = requestPath.substring("/download/".length());
-        
         try {
-            // URL解码处理中文路径
-            filePath = URLDecoder.decode(filePath, StandardCharsets.UTF_8);
-            log.info("下载文件路径: {}", filePath);
+            // 使用多种方法获取文件路径，确保正确处理中文
+            String requestURI = request.getRequestURI();
+            String servletPath = request.getServletPath();
+            String pathInfo = request.getPathInfo();
             
-            Resource resource = fileService.getFileAsResource(filePath);
+            log.info("原始requestURI: {}", requestURI);
+            log.info("servletPath: {}", servletPath);
+            log.info("pathInfo: {}", pathInfo);
             
-            // 获取文件名并进行URL编码
-            String filename = resource.getFilename();
-            if (filename == null) {
-                filename = "download";
+            // 从请求路径中提取文件路径
+            String filePath = requestURI.substring("/download/".length());
+            log.info("提取的文件路径(编码): {}", filePath);
+            
+            // 尝试解码 - 处理可能的双重编码问题
+            String decodedPath = filePath;
+            try {
+                decodedPath = URLDecoder.decode(filePath, StandardCharsets.UTF_8);
+                log.info("第一次URL解码: {}", decodedPath);
+                
+                // 检查是否需要二次解码（某些情况下可能会有双重编码）
+                if (decodedPath.contains("%")) {
+                    String secondDecode = URLDecoder.decode(decodedPath, StandardCharsets.UTF_8);
+                    log.info("第二次URL解码: {}", secondDecode);
+                    decodedPath = secondDecode;
+                }
+            } catch (Exception e) {
+                log.warn("URL解码失败，使用原始路径: {}", e.getMessage());
+                decodedPath = filePath;
             }
             
-            // 设置响应头
+            // 清理路径
+            String cleanedPath = cleanPath(decodedPath);
+            log.info("最终清理后的文件路径: {}", cleanedPath);
+            
+            // 检查文件是否存在
+            if (!fileService.fileExists(cleanedPath)) {
+                log.warn("文件不存在: {}", cleanedPath);
+                return ResponseEntity.notFound().build();
+            }
+            
+            Resource resource = fileService.getFileAsResource(cleanedPath);
+            
+            // 获取文件名
+            String filename = resource.getFilename();
+            if (filename == null) {
+                // 从路径中提取文件名
+                if (cleanedPath.contains("/")) {
+                    filename = cleanedPath.substring(cleanedPath.lastIndexOf("/") + 1);
+                } else {
+                    filename = cleanedPath;
+                }
+                if (filename.isEmpty()) {
+                    filename = "download";
+                }
+            }
+            
+            log.info("开始下载文件: {} (文件名: {})", cleanedPath, filename);
+            
+            // 设置响应头，确保中文文件名正确显示
+            String encodedFilename = URLEncoder.encode(filename, StandardCharsets.UTF_8)
+                    .replace("+", "%20");
+            
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, 
+                "attachment; filename*=UTF-8''" + encodedFilename);
+            headers.add(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_OCTET_STREAM_VALUE);
+            
             return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .header(HttpHeaders.CONTENT_DISPOSITION, 
-                    "attachment; filename=\"" + URLEncoder.encode(filename, StandardCharsets.UTF_8) + "\"")
+                .headers(headers)
                 .body(resource);
                 
+        } catch (SecurityException e) {
+            log.error("安全错误 - 尝试访问非法路径", e);
+            return ResponseEntity.status(403).build();
+        } catch (IllegalArgumentException e) {
+            log.error("参数错误 - 文件路径无效", e);
+            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("文件下载失败: {}", filePath, e);
-            return ResponseEntity.notFound().build();
+            log.error("文件下载失败", e);
+            return ResponseEntity.status(500).build();
         }
+    }
+
+    /**
+     * 清理文件路径 - 增强版
+     */
+    private String cleanPath(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return "";
+        }
+        
+        path = path.trim();
+        
+        // 统一使用正斜杠
+        path = path.replace("\\", "/");
+        
+        // 移除可能的双斜杠
+        while (path.contains("//")) {
+            path = path.replace("//", "/");
+        }
+        
+        // 移除开头的斜杠
+        while (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+        
+        // 移除结尾的斜杠（除非是根路径）
+        while (path.endsWith("/") && path.length() > 1) {
+            path = path.substring(0, path.length() - 1);
+        }
+        
+        // 处理路径遍历攻击
+        if (path.contains("..")) {
+            log.warn("检测到可能的路径遍历攻击: {}", path);
+            path = path.replace("..", "");
+        }
+        
+        return path;
     }
 
     /**
