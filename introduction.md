@@ -19,5 +19,8 @@
 ![主界面.png](pics/%E4%B8%BB%E7%95%8C%E9%9D%A2.png)
 
 
-手机下载界面
+手机下载界面，速度极限为路由器的带宽
 ![Screenshot_2025-05-31-14-06-34-504_com.android.chrome(1).jpg](pics/Screenshot_2025-05-31-14-06-34-504_com.android.chrome%281%29.jpg)
+
+虚拟机下载，最大速度为虚拟机配置的网络带宽
+![ubuntu20-downloader.png](pics/ubuntu20-downloader.png)
