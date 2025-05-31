@@ -43,7 +43,7 @@
 4. **访问应用**
    - 本地访问: http://localhost:8080
    - 局域网访问: http://[您的IP地址]:8080
-
+   ![img.png](pics/img.png)
 ### 配置选项
 
 ### 基本配置
@@ -81,21 +81,28 @@ file.upload.max-file-size=500
 - 2GB：`file.upload.max-file-size=2048`
 
 **注意：** 文件越大，上传时间越长，请确保网络稳定。
-
+### 下载jar包
+发布版本的jar包可以在release中下载，地址为：
+https://github.com/codebricking/easy-sharer/releases/tag/simple-share
+1、可下载easy-sharer-0.0.1.jar
+依赖于Java 17或更高版本的JDK运行。对于下载jar包的用户，大多数是开发人员或有一定技术基础的用户，参考命令运行jar包即可。
+2、easy-share-with-win-jdk.zip
+对于非开发人员或不熟悉命令行的用户，可以下载带有Windows JDK的压缩包，解压后直接运行`start.bat`文件即可。
+其他启动方式，在release中提供了带有windows jdk的压缩包，可以在window下直接点击bat文件运行。
 #### 2. 命令行参数
 
 ```bash
 # 指定端口
-java -jar easy-sharer-0.0.1-SNAPSHOT.jar --server.port=9090
+java -jar easy-sharer-0.0.1.jar --server.port=9090
 
 # 指定共享目录
-java -jar easy-sharer-0.0.1-SNAPSHOT.jar --file.share.root-path=D:\temp\share
+java -jar easy-sharer-0.0.1.jar --file.share.root-path=D:\temp\share
 
 # 启用上传功能
-java -jar easy-sharer-0.0.1-SNAPSHOT.jar --file.upload.enabled=true
+java -jar easy-sharer-0.0.1.jar --file.upload.enabled=true
 
 # 组合使用
-java -jar easy-sharer-0.0.1-SNAPSHOT.jar --server.port=9090 --file.share.root-path=D:\temp\share --file.upload.enabled=true
+java -jar easy-sharer-0.0.1.jar --server.port=9090 --file.share.root-path=D:\temp\share --file.upload.enabled=true
 ```
 
 ## 使用说明
