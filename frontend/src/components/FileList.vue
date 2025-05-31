@@ -260,7 +260,7 @@ export default {
 
     const downloadFile = (file) => {
       const filePath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
-      const url = `/download/${encodeURIComponent(filePath)}`
+      const url = `/download?path=${encodeURIComponent(filePath)}`
       window.open(url, '_blank')
     }
 
@@ -268,11 +268,11 @@ export default {
       try {
         const filePath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
         
-        // 生成分享链接 - 使用选中的IP地址
+        // 生成分享链接 - 使用选中的IP地址和查询参数形式
         const selectedIpAddress = props.selectedIp || 'localhost'
         const port = props.serverPort || 8080
         const baseUrl = `http://${selectedIpAddress}:${port}`
-        shareUrl.value = `${baseUrl}/download/${encodeURIComponent(filePath)}`
+        shareUrl.value = `${baseUrl}/download?path=${encodeURIComponent(filePath)}`
         
         shareDialogVisible.value = true
         

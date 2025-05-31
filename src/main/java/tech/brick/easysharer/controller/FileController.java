@@ -97,44 +97,16 @@ public class FileController {
     }
 
     /**
-     * 文件下载
+     * 文件下载 - 优化版：使用查询参数传递路径，避免URL解析问题
      */
-    @GetMapping("/download/**")
-    public ResponseEntity<Resource> downloadFile(HttpServletRequest request) {
+    @GetMapping("/download")
+    public ResponseEntity<Resource> downloadFile(@RequestParam("path") String filePath) {
         try {
-            // 使用多种方法获取文件路径，确保正确处理中文
-            String requestURI = request.getRequestURI();
-            String servletPath = request.getServletPath();
-            String pathInfo = request.getPathInfo();
-            
-            log.info("原始requestURI: {}", requestURI);
-            log.info("servletPath: {}", servletPath);
-            log.info("pathInfo: {}", pathInfo);
-            
-            // 从请求路径中提取文件路径
-            String filePath = requestURI.substring("/download/".length());
-            log.info("提取的文件路径(编码): {}", filePath);
-            
-            // 尝试解码 - 处理可能的双重编码问题
-            String decodedPath = filePath;
-            try {
-                decodedPath = URLDecoder.decode(filePath, StandardCharsets.UTF_8);
-                log.info("第一次URL解码: {}", decodedPath);
-                
-                // 检查是否需要二次解码（某些情况下可能会有双重编码）
-                if (decodedPath.contains("%")) {
-                    String secondDecode = URLDecoder.decode(decodedPath, StandardCharsets.UTF_8);
-                    log.info("第二次URL解码: {}", secondDecode);
-                    decodedPath = secondDecode;
-                }
-            } catch (Exception e) {
-                log.warn("URL解码失败，使用原始路径: {}", e.getMessage());
-                decodedPath = filePath;
-            }
+            log.info("下载文件请求，原始路径参数: {}", filePath);
             
             // 清理路径
-            String cleanedPath = cleanPath(decodedPath);
-            log.info("最终清理后的文件路径: {}", cleanedPath);
+            String cleanedPath = cleanPath(filePath);
+            log.info("清理后的文件路径: {}", cleanedPath);
             
             // 检查文件是否存在
             if (!fileService.fileExists(cleanedPath)) {
@@ -234,9 +206,9 @@ public class FileController {
                 return ResponseEntity.notFound().build();
             }
             
-            // 构建分享链接 - 使用真实的局域网IP地址
+            // 构建分享链接 - 使用查询参数形式
             String baseUrl = getShareBaseUrl(request);
-            String shareUrl = baseUrl + "/download/" + URLEncoder.encode(filePath, StandardCharsets.UTF_8);
+            String shareUrl = baseUrl + "/download?path=" + URLEncoder.encode(filePath, StandardCharsets.UTF_8);
             
             return ResponseEntity.ok(shareUrl);
             
