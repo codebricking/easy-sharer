@@ -3,10 +3,33 @@
     <el-container class="app-container">
       <el-header class="app-header">
         <div class="header-content">
-          <h1 class="app-title">
-            <el-icon class="title-icon"><Share /></el-icon>
-            Easy Sharer
-          </h1>
+          <div class="header-left">
+            <h1 class="app-title">
+              <el-icon class="title-icon"><Share /></el-icon>
+              Easy Sharer
+            </h1>
+            
+            <!-- 功能切换按钮组 - 移到标题右边 -->
+            <div class="function-switch-inline">
+              <el-button-group class="switch-buttons">
+                <el-button 
+                  :type="currentTab === 'files' ? 'primary' : ''" 
+                  @click="handleTabSelect('files')"
+                  class="switch-btn">
+                  <el-icon><Folder /></el-icon>
+                  文件分享
+                </el-button>
+                <el-button 
+                  :type="currentTab === 'text-share' ? 'primary' : ''" 
+                  @click="handleTabSelect('text-share')"
+                  class="switch-btn">
+                  <el-icon><ChatDotRound /></el-icon>
+                  文本分享
+                </el-button>
+              </el-button-group>
+            </div>
+          </div>
+          
           <div class="header-info">
             <!-- IP选择下拉框 -->
             <el-select 
@@ -40,7 +63,17 @@
       </el-header>
       
       <el-main class="app-main">
-        <router-view :selected-ip="selectedIp" :server-port="serverInfo.port" />
+        <!-- 文件分享组件 -->
+        <FileList 
+          v-if="currentTab === 'files'"
+          :selected-ip="selectedIp" 
+          :server-port="serverInfo.port" />
+          
+        <!-- 文本分享组件 -->
+        <TextShare 
+          v-if="currentTab === 'text-share'"
+          :selected-ip="selectedIp" 
+          :server-port="serverInfo.port" />
       </el-main>
       
       <el-footer class="app-footer">
@@ -102,14 +135,21 @@
 <script>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import FileList from './components/FileList.vue'
+import TextShare from './components/TextShare.vue'
 
 export default {
   name: 'App',
+  components: {
+    FileList,
+    TextShare
+  },
   setup() {
     const showNetworkDialog = ref(false)
     const uploadEnabled = ref(false)
     const serverInfo = ref({})
     const selectedIp = ref('')
+    const currentTab = ref('files') // 默认显示文件分享
 
     const loadServerInfo = async () => {
       try {
@@ -139,6 +179,10 @@ export default {
       selectedIp.value = ip
     }
 
+    const handleTabSelect = (key) => {
+      currentTab.value = key
+    }
+
     onMounted(() => {
       loadServerInfo()
     })
@@ -148,8 +192,10 @@ export default {
       uploadEnabled,
       serverInfo,
       selectedIp,
+      currentTab,
       selectIp,
-      handleIpChange
+      handleIpChange,
+      handleTabSelect
     }
   }
 }
@@ -164,16 +210,61 @@ export default {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border-bottom: 1px solid #e4e7ed;
+  padding: 0;
 }
 
 .header-content {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: 100%;
+  height: 70px;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+}
+
+.function-switch-inline {
+  margin-left: 20px;
+}
+
+.switch-buttons {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.switch-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: rgba(255, 255, 255, 0.9);
+  color: #606266;
+  transition: all 0.3s ease;
+  min-width: 90px;
+}
+
+.switch-btn:hover {
+  background: rgba(255, 255, 255, 1);
+  color: #409eff;
+  transform: translateY(-1px);
+}
+
+.switch-btn.el-button--primary {
+  background: #409eff;
+  color: white;
+  box-shadow: 0 2px 4px rgba(64, 158, 255, 0.3);
+}
+
+.switch-btn.el-button--primary:hover {
+  background: #337ecc;
+  transform: translateY(-1px);
 }
 
 .app-title {
@@ -183,6 +274,7 @@ export default {
   display: flex;
   align-items: center;
   color: white;
+  white-space: nowrap;
 }
 
 .title-icon {
@@ -194,13 +286,14 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .app-main {
   padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
-  min-height: calc(100vh - 120px);
+  min-height: calc(100vh - 140px);
 }
 
 .app-footer {
@@ -234,5 +327,93 @@ export default {
 .recommended {
   color: #67c23a;
   font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+  .header-content {
+    padding: 0 15px;
+  }
+  
+  .function-switch-inline {
+    margin-left: 15px;
+  }
+  
+  .switch-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    min-width: 80px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header-content {
+    flex-direction: column;
+    height: auto;
+    padding: 15px;
+    gap: 15px;
+  }
+  
+  .header-left {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .function-switch-inline {
+    margin-left: 0;
+  }
+  
+  .header-info {
+    width: 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  
+  .app-title {
+    font-size: 20px;
+  }
+  
+  .title-icon {
+    font-size: 24px;
+  }
+  
+  .switch-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    min-width: 70px;
+  }
+  
+  .app-main {
+    padding: 15px;
+    min-height: calc(100vh - 160px);
+  }
+  
+  .footer-content {
+    flex-direction: column;
+    gap: 10px;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-left {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  
+  .function-switch-inline {
+    align-self: center;
+  }
+  
+  .switch-buttons {
+    border-radius: 15px;
+  }
+  
+  .switch-btn {
+    padding: 5px 8px;
+    font-size: 10px;
+    min-width: 60px;
+  }
 }
 </style> 

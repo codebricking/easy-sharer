@@ -10,8 +10,10 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import tech.brick.easysharer.model.FileInfo;
+import tech.brick.easysharer.model.TextShare;
 import tech.brick.easysharer.service.FileService;
 import tech.brick.easysharer.service.UploadService;
+import tech.brick.easysharer.service.TextShareService;
 import tech.brick.easysharer.util.NetworkUtils;
 import org.springframework.beans.factory.annotation.Value;
 
@@ -21,6 +23,7 @@ import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Controller
@@ -29,6 +32,7 @@ public class FileController {
 
     private final FileService fileService;
     private final UploadService uploadService;
+    private final TextShareService textShareService;
 
     @Value("${file.upload.max-file-size:500}")
     private int maxFileSizeMB;
@@ -332,6 +336,148 @@ public class FileController {
     }
 
     /**
+     * API: 创建文本分享
+     */
+    @PostMapping("/api/text-share")
+    @ResponseBody
+    public ResponseEntity<TextShareResponse> createTextShare(@RequestBody CreateTextShareRequest request, 
+                                                           HttpServletRequest httpRequest) {
+        try {
+            String ipAddress = getClientIpAddress(httpRequest);
+            
+            log.info("创建文本分享请求: IP={}, 类型={}, 内容长度={}", 
+                    ipAddress, request.getType(), request.getContent() != null ? request.getContent().length() : 0);
+            
+            TextShare textShare = textShareService.createTextShare(
+                    request.getContent(), 
+                    ipAddress, 
+                    request.getNickname(), 
+                    request.getType()
+            );
+            
+            return ResponseEntity.ok(new TextShareResponse(true, "分享创建成功", textShare));
+            
+        } catch (IllegalArgumentException e) {
+            log.warn("创建文本分享失败 - 参数错误: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(new TextShareResponse(false, e.getMessage(), null));
+        } catch (Exception e) {
+            log.error("创建文本分享失败", e);
+            return ResponseEntity.internalServerError()
+                    .body(new TextShareResponse(false, "分享创建失败: " + e.getMessage(), null));
+        }
+    }
+    
+    /**
+     * API: 获取所有文本分享
+     */
+    @GetMapping("/api/text-shares")
+    @ResponseBody
+    public ResponseEntity<List<TextShare>> getAllTextShares() {
+        try {
+            List<TextShare> shares = textShareService.getAllTextShares();
+            log.info("获取文本分享列表: 数量={}", shares.size());
+            return ResponseEntity.ok(shares);
+        } catch (Exception e) {
+            log.error("获取文本分享列表失败", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * API: 根据ID获取文本分享
+     */
+    @GetMapping("/api/text-share/{id}")
+    @ResponseBody
+    public ResponseEntity<TextShare> getTextShare(@PathVariable String id) {
+        try {
+            TextShare share = textShareService.getTextShare(id);
+            if (share != null) {
+                return ResponseEntity.ok(share);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("获取文本分享失败: ID={}", id, e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * API: 根据IP获取文本分享
+     */
+    @GetMapping("/api/text-shares/my")
+    @ResponseBody
+    public ResponseEntity<List<TextShare>> getMyTextShares(HttpServletRequest request) {
+        try {
+            String ipAddress = getClientIpAddress(request);
+            List<TextShare> shares = textShareService.getTextSharesByIp(ipAddress);
+            log.info("获取我的文本分享: IP={}, 数量={}", ipAddress, shares.size());
+            return ResponseEntity.ok(shares);
+        } catch (Exception e) {
+            log.error("获取我的文本分享失败", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * API: 删除文本分享
+     */
+    @DeleteMapping("/api/text-share/{id}")
+    @ResponseBody
+    public ResponseEntity<SimpleResponse> deleteTextShare(@PathVariable String id, 
+                                                        HttpServletRequest request) {
+        try {
+            String ipAddress = getClientIpAddress(request);
+            boolean deleted = textShareService.deleteTextShare(id, ipAddress);
+            
+            if (deleted) {
+                log.info("删除文本分享成功: ID={}, IP={}", id, ipAddress);
+                return ResponseEntity.ok(new SimpleResponse(true, "分享删除成功"));
+            } else {
+                return ResponseEntity.badRequest()
+                        .body(new SimpleResponse(false, "无法删除分享：分享不存在或无权限"));
+            }
+        } catch (Exception e) {
+            log.error("删除文本分享失败: ID={}", id, e);
+            return ResponseEntity.internalServerError()
+                    .body(new SimpleResponse(false, "删除失败: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * API: 获取文本分享统计信息
+     */
+    @GetMapping("/api/text-shares/stats")
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> getTextShareStats() {
+        try {
+            Map<String, Object> stats = textShareService.getStatistics();
+            return ResponseEntity.ok(stats);
+        } catch (Exception e) {
+            log.error("获取文本分享统计失败", e);
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * 获取客户端真实IP地址
+     */
+    private String getClientIpAddress(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (xForwardedFor != null && !xForwardedFor.isEmpty() && !"unknown".equalsIgnoreCase(xForwardedFor)) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (xRealIp != null && !xRealIp.isEmpty() && !"unknown".equalsIgnoreCase(xRealIp)) {
+            return xRealIp;
+        }
+        
+        return request.getRemoteAddr();
+    }
+
+    /**
      * 文件列表响应对象
      */
     public static class FilesResponse {
@@ -381,5 +527,56 @@ public class FileController {
         public boolean isSuccess() { return success; }
         public String getMessage() { return message; }
         public List<String> getUploadedFiles() { return uploadedFiles; }
+    }
+
+    /**
+     * 文本分享响应对象
+     */
+    public static class TextShareResponse {
+        private final boolean success;
+        private final String message;
+        private final TextShare textShare;
+        
+        public TextShareResponse(boolean success, String message, TextShare textShare) {
+            this.success = success;
+            this.message = message;
+            this.textShare = textShare;
+        }
+        
+        public boolean isSuccess() { return success; }
+        public String getMessage() { return message; }
+        public TextShare getTextShare() { return textShare; }
+    }
+
+    /**
+     * 文本分享请求对象
+     */
+    public static class CreateTextShareRequest {
+        private String content;
+        private String nickname;
+        private String type;
+
+        public String getContent() { return content; }
+        public void setContent(String content) { this.content = content; }
+        public String getNickname() { return nickname; }
+        public void setNickname(String nickname) { this.nickname = nickname; }
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+    }
+
+    /**
+     * 简单响应对象
+     */
+    public static class SimpleResponse {
+        private final boolean success;
+        private final String message;
+        
+        public SimpleResponse(boolean success, String message) {
+            this.success = success;
+            this.message = message;
+        }
+        
+        public boolean isSuccess() { return success; }
+        public String getMessage() { return message; }
     }
 } 
