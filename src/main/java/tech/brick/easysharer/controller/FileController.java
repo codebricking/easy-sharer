@@ -18,12 +18,21 @@ import tech.brick.easysharer.util.NetworkUtils;
 import org.springframework.beans.factory.annotation.Value;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Slf4j
 @Controller
@@ -52,33 +61,43 @@ public class FileController {
     @ResponseBody
     public ResponseEntity<FilesResponse> getFiles(@RequestParam(value = "path", defaultValue = "") String path) {
         try {
-            // 清理路径
-            if (path == null) {
-                path = "";
-            }
-            path = path.trim();
-            if (path.startsWith("/")) {
-                path = path.substring(1);
-            }
-            if (path.endsWith("/") && !path.isEmpty()) {
-                path = path.substring(0, path.length() - 1);
-            }
+            log.info("API请求文件列表，原始路径参数: '{}'", path);
             
-            log.info("API请求文件列表，路径: '{}'", path);
+            // 使用统一的路径清理方法
+            String cleanedPath = cleanPath(path);
+            log.info("清理后的路径: '{}'", cleanedPath);
             
-            List<FileInfo> files = fileService.listFiles(path);
+            List<FileInfo> files = fileService.listFiles(cleanedPath);
             
             FilesResponse response = new FilesResponse();
             response.setFiles(files);
-            response.setCurrentPath(path);
+            response.setCurrentPath(cleanedPath);
             response.setRootPath(fileService.getRootPath());
             response.setUploadEnabled(uploadService.isUploadEnabled());
+            response.setSuccess(true);
+            response.setMessage("文件列表获取成功");
             
+            log.info("返回文件列表: 路径='{}', 文件数量={}", cleanedPath, files.size());
             return ResponseEntity.ok(response);
             
+        } catch (SecurityException e) {
+            log.error("安全错误 - 尝试访问非法路径: {}", path, e);
+            FilesResponse errorResponse = new FilesResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage("访问被拒绝：路径不安全");
+            return ResponseEntity.status(403).body(errorResponse);
+        } catch (IllegalArgumentException e) {
+            log.error("参数错误 - 路径无效: {}", path, e);
+            FilesResponse errorResponse = new FilesResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage("路径参数无效: " + e.getMessage());
+            return ResponseEntity.badRequest().body(errorResponse);
         } catch (Exception e) {
-            log.error("获取文件列表失败: {}", path, e);
-            return ResponseEntity.internalServerError().build();
+            log.error("获取文件列表失败: 路径='{}', 错误={}", path, e.getMessage(), e);
+            FilesResponse errorResponse = new FilesResponse();
+            errorResponse.setSuccess(false);
+            errorResponse.setMessage("获取文件列表失败: " + e.getMessage());
+            return ResponseEntity.internalServerError().body(errorResponse);
         }
     }
 
@@ -165,7 +184,10 @@ public class FileController {
      * 清理文件路径 - 增强版
      */
     private String cleanPath(String path) {
+        log.debug("清理路径开始: 原始路径='{}'", path);
+        
         if (path == null || path.trim().isEmpty()) {
+            log.debug("路径为空，返回根路径");
             return "";
         }
         
@@ -191,10 +213,21 @@ public class FileController {
         
         // 处理路径遍历攻击
         if (path.contains("..")) {
-            log.warn("检测到可能的路径遍历攻击: {}", path);
+            log.warn("检测到可能的路径遍历攻击: 原始路径='{}', 清理中...", path);
             path = path.replace("..", "");
+            if (path.contains("..")) {
+                // 再次检查，防止嵌套的路径遍历
+                throw new SecurityException("检测到路径遍历攻击尝试");
+            }
         }
         
+        // 检查路径是否包含非法字符
+        if (path.matches(".*[<>:\"|?*].*")) {
+            log.warn("路径包含非法字符: '{}'", path);
+            throw new IllegalArgumentException("路径包含非法字符");
+        }
+        
+        log.debug("路径清理完成: 最终路径='{}'", path);
         return path;
     }
 
@@ -206,18 +239,32 @@ public class FileController {
     public ResponseEntity<String> getShareLink(@RequestParam String filePath, 
                                              HttpServletRequest request) {
         try {
-            if (!fileService.fileExists(filePath)) {
+            log.info("生成分享链接请求，原始文件路径: '{}'", filePath);
+            
+            // 清理文件路径
+            String cleanedPath = cleanPath(filePath);
+            log.info("清理后的文件路径: '{}'", cleanedPath);
+            
+            if (!fileService.fileExists(cleanedPath)) {
+                log.warn("文件不存在，无法生成分享链接: '{}'", cleanedPath);
                 return ResponseEntity.notFound().build();
             }
             
             // 构建分享链接 - 使用查询参数形式
             String baseUrl = getShareBaseUrl(request);
-            String shareUrl = baseUrl + "/download?path=" + URLEncoder.encode(filePath, StandardCharsets.UTF_8);
+            String shareUrl = baseUrl + "/download?path=" + URLEncoder.encode(cleanedPath, StandardCharsets.UTF_8);
             
+            log.info("生成分享链接成功: 文件='{}', 链接='{}'", cleanedPath, shareUrl);
             return ResponseEntity.ok(shareUrl);
             
+        } catch (SecurityException e) {
+            log.error("生成分享链接失败 - 安全错误: {}", filePath, e);
+            return ResponseEntity.status(403).build();
+        } catch (IllegalArgumentException e) {
+            log.error("生成分享链接失败 - 参数错误: {}", filePath, e);
+            return ResponseEntity.badRequest().build();
         } catch (Exception e) {
-            log.error("生成分享链接失败: {}", filePath, e);
+            log.error("生成分享链接失败: 文件='{}'", filePath, e);
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -230,8 +277,12 @@ public class FileController {
     public ResponseEntity<UploadResponse> uploadFiles(@RequestParam("files") List<MultipartFile> files,
                                                      @RequestParam(value = "path", defaultValue = "") String path) {
         try {
-            log.info("收到上传请求，文件数量: {}, 目标路径: '{}'", files.size(), path);
+            log.info("收到上传请求，文件数量: {}, 原始目标路径: '{}'", files.size(), path);
             log.info("上传功能启用状态: {}", uploadService.isUploadEnabled());
+            
+            // 清理上传路径
+            String cleanedPath = cleanPath(path);
+            log.info("清理后的上传路径: '{}'", cleanedPath);
             
             // 输出每个文件的详细信息
             for (int i = 0; i < files.size(); i++) {
@@ -270,10 +321,11 @@ public class FileController {
                 }
             }
 
-            log.info("开始调用uploadService.uploadFiles...");
-            List<String> uploadedFiles = uploadService.uploadFiles(files, path);
+            log.info("开始调用uploadService.uploadFiles，使用清理后的路径: '{}'", cleanedPath);
+            List<String> uploadedFiles = uploadService.uploadFiles(files, cleanedPath);
             
-            String message = String.format("成功上传 %d 个文件", uploadedFiles.size());
+            String message = String.format("成功上传 %d 个文件到路径: %s", uploadedFiles.size(), 
+                    cleanedPath.isEmpty() ? "根目录" : cleanedPath);
             log.info("上传成功: {}, 文件: {}", message, uploadedFiles);
             return ResponseEntity.ok(new UploadResponse(true, message, uploadedFiles));
             
@@ -485,6 +537,8 @@ public class FileController {
         private String currentPath;
         private String rootPath;
         private boolean uploadEnabled;
+        private boolean success;
+        private String message;
 
         // Getters and setters
         public List<FileInfo> getFiles() { return files; }
@@ -495,6 +549,10 @@ public class FileController {
         public void setRootPath(String rootPath) { this.rootPath = rootPath; }
         public boolean isUploadEnabled() { return uploadEnabled; }
         public void setUploadEnabled(boolean uploadEnabled) { this.uploadEnabled = uploadEnabled; }
+        public boolean isSuccess() { return success; }
+        public void setSuccess(boolean success) { this.success = success; }
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
     }
 
     /**
@@ -578,5 +636,188 @@ public class FileController {
         
         public boolean isSuccess() { return success; }
         public String getMessage() { return message; }
+    }
+
+    /**
+     * 文件夹下载 - 流式ZIP打包
+     */
+    @GetMapping("/download-folder")
+    public void downloadFolder(@RequestParam("path") String folderPath, 
+                              HttpServletResponse response) {
+        try {
+            log.info("文件夹下载请求，原始路径: '{}'", folderPath);
+            
+            // 清理路径
+            String cleanedPath = cleanPath(folderPath);
+            log.info("清理后的文件夹路径: '{}'", cleanedPath);
+            
+            // 检查是否为文件夹
+            if (!fileService.isDirectory(cleanedPath)) {
+                log.warn("路径不是文件夹: '{}'", cleanedPath);
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("指定路径不是文件夹");
+                return;
+            }
+            
+            // 获取文件夹名称作为ZIP文件名
+            String folderName = getFolderNameFromPath(cleanedPath);
+            String zipFileName = folderName.isEmpty() ? "shared_files" : folderName;
+            
+            // 设置响应头
+            response.setContentType("application/zip");
+            response.setHeader("Content-Disposition", 
+                "attachment; filename*=UTF-8''" + 
+                URLEncoder.encode(zipFileName + ".zip", StandardCharsets.UTF_8));
+            
+            log.info("开始流式打包文件夹: '{}' -> '{}.zip'", cleanedPath, zipFileName);
+            
+            // 使用流式ZIP打包
+            try (ZipOutputStream zipOut = new ZipOutputStream(
+                    new BufferedOutputStream(response.getOutputStream(), 8192))) {
+                
+                // 设置压缩级别（平衡速度和压缩率）
+                zipOut.setLevel(Deflater.DEFAULT_COMPRESSION);
+                
+                // 递归添加文件夹内容到ZIP
+                addDirectoryToZip(cleanedPath, "", zipOut);
+                
+                zipOut.finish();
+                zipOut.flush();
+            }
+            
+            log.info("文件夹打包下载完成: '{}'", cleanedPath);
+            
+        } catch (SecurityException e) {
+            log.error("安全错误 - 尝试下载非法路径: {}", folderPath, e);
+            try {
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.getWriter().write("访问被拒绝：路径不安全");
+            } catch (IOException ioException) {
+                log.error("写入错误响应失败", ioException);
+            }
+        } catch (IllegalArgumentException e) {
+            log.error("参数错误 - 文件夹路径无效: {}", folderPath, e);
+            try {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                response.getWriter().write("文件夹路径无效: " + e.getMessage());
+            } catch (IOException ioException) {
+                log.error("写入错误响应失败", ioException);
+            }
+        } catch (IOException e) {
+            log.error("文件夹下载失败 - IO错误: {}", folderPath, e);
+            try {
+                if (!response.isCommitted()) {
+                    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                    response.getWriter().write("下载失败: " + e.getMessage());
+                }
+            } catch (IOException ioException) {
+                log.error("写入错误响应失败", ioException);
+            }
+        } catch (Exception e) {
+            log.error("文件夹下载失败 - 未知错误: {}", folderPath, e);
+            try {
+                if (!response.isCommitted()) {
+                    response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                    response.getWriter().write("下载失败: " + e.getMessage());
+                }
+            } catch (IOException ioException) {
+                log.error("写入错误响应失败", ioException);
+            }
+        }
+    }
+
+    /**
+     * 递归添加目录内容到ZIP流
+     */
+    private void addDirectoryToZip(String sourceDirPath, String zipDirPath, ZipOutputStream zipOut) 
+            throws IOException {
+        
+        List<FileInfo> files = fileService.listFiles(sourceDirPath);
+        log.debug("处理目录: '{}', 包含 {} 个项目", sourceDirPath, files.size());
+        
+        // 如果是空文件夹，添加一个目录条目
+        if (files.isEmpty() && !zipDirPath.isEmpty()) {
+            ZipEntry dirEntry = new ZipEntry(zipDirPath + "/");
+            dirEntry.setTime(System.currentTimeMillis());
+            zipOut.putNextEntry(dirEntry);
+            zipOut.closeEntry();
+            log.debug("添加空目录: '{}'", zipDirPath);
+        }
+        
+        for (FileInfo fileInfo : files) {
+            String sourceFilePath = sourceDirPath.isEmpty() ? 
+                fileInfo.getName() : sourceDirPath + "/" + fileInfo.getName();
+            String zipFilePath = zipDirPath.isEmpty() ? 
+                fileInfo.getName() : zipDirPath + "/" + fileInfo.getName();
+            
+            if (fileInfo.isDirectory()) {
+                // 递归处理子目录
+                addDirectoryToZip(sourceFilePath, zipFilePath, zipOut);
+            } else {
+                // 添加文件到ZIP
+                addFileToZip(sourceFilePath, zipFilePath, zipOut);
+            }
+        }
+    }
+
+    /**
+     * 添加单个文件到ZIP流
+     */
+    private void addFileToZip(String sourceFilePath, String zipFilePath, ZipOutputStream zipOut) 
+            throws IOException {
+        
+        try (InputStream fileInputStream = fileService.getFileInputStream(sourceFilePath);
+             BufferedInputStream bufferedInput = new BufferedInputStream(fileInputStream, 8192)) {
+            
+            ZipEntry zipEntry = new ZipEntry(zipFilePath);
+            
+            // 设置文件修改时间
+            try {
+                long lastModified = fileService.getLastModified(sourceFilePath);
+                zipEntry.setTime(lastModified);
+            } catch (Exception e) {
+                log.debug("无法获取文件修改时间: {}", sourceFilePath);
+                zipEntry.setTime(System.currentTimeMillis());
+            }
+            
+            zipOut.putNextEntry(zipEntry);
+            
+            // 流式复制文件内容
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+            long totalBytes = 0;
+            
+            while ((bytesRead = bufferedInput.read(buffer)) != -1) {
+                zipOut.write(buffer, 0, bytesRead);
+                totalBytes += bytesRead;
+            }
+            
+            zipOut.closeEntry();
+            log.debug("添加文件到ZIP: '{}' ({} bytes)", zipFilePath, totalBytes);
+            
+        } catch (Exception e) {
+            log.error("添加文件到ZIP失败: '{}' -> '{}'", sourceFilePath, zipFilePath, e);
+            // 继续处理其他文件，不因单个文件失败而中断整个打包过程
+        }
+    }
+
+    /**
+     * 从路径中提取文件夹名称
+     */
+    private String getFolderNameFromPath(String path) {
+        if (path == null || path.trim().isEmpty()) {
+            return "";
+        }
+        
+        // 移除末尾的斜杠
+        path = path.replaceAll("[/\\\\]+$", "");
+        
+        // 提取最后一个路径组件
+        int lastSeparator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+        if (lastSeparator >= 0) {
+            return path.substring(lastSeparator + 1);
+        }
+        
+        return path;
     }
 } 

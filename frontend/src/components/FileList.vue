@@ -2,14 +2,14 @@
   <div class="file-list-container">
     <!-- 面包屑导航 -->
     <el-breadcrumb class="breadcrumb" separator="/">
-      <el-breadcrumb-item :to="{ path: '/', query: { path: '' } }">
+      <el-breadcrumb-item @click="navigateToPath('')">
         <el-icon><HomeFilled /></el-icon>
         首页
       </el-breadcrumb-item>
       <el-breadcrumb-item 
         v-for="(crumb, index) in breadcrumbs" 
         :key="index"
-        :to="{ path: '/browse', query: { path: crumb.path } }">
+        @click="navigateToPath(crumb.path)">
         {{ crumb.name }}
       </el-breadcrumb-item>
     </el-breadcrumb>
@@ -24,6 +24,10 @@
         <el-button v-if="uploadEnabled" type="primary" @click="selectFiles">
           <el-icon><Upload /></el-icon>
           选择文件上传
+        </el-button>
+        <el-button type="success" @click="downloadCurrentFolder">
+          <el-icon><Download /></el-icon>
+          下载当前文件夹
         </el-button>
       </div>
       <div class="toolbar-right">
@@ -74,7 +78,7 @@
             v-if="row.directory"
             text 
             type="primary" 
-            @click="navigateToFolder(row.name)"
+            @click="navigateToFolder(row.name, $event)"
             class="file-name-btn">
             {{ row.name }}
           </el-button>
@@ -86,7 +90,7 @@
       
       <el-table-column prop="formattedLastModified" label="修改时间" width="180" />
       
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="250">
         <template #default="{ row }">
           <el-space>
             <el-button 
@@ -96,6 +100,14 @@
               @click="downloadFile(row)">
               <el-icon><Download /></el-icon>
               下载
+            </el-button>
+            <el-button 
+              v-if="row.directory"
+              type="success" 
+              size="small"
+              @click="downloadFolder(row)">
+              <el-icon><Download /></el-icon>
+              下载文件夹
             </el-button>
             <el-button 
               v-if="!row.directory"
@@ -161,6 +173,24 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  HomeFilled,
+  Refresh,
+  Upload,
+  Download,
+  Search,
+  Share,
+  CopyDocument,
+  Folder,
+  FolderOpened,
+  Picture,
+  VideoPlay,
+  Service,
+  Document,
+  Grid,
+  Box,
+  ChatDotRound
+} from '@element-plus/icons-vue'
 
 export default {
   name: 'FileList',
@@ -247,12 +277,31 @@ export default {
       loadFiles(currentPath.value)
     }
 
-    const navigateToFolder = (folderName) => {
+    const navigateToFolder = (folderName, event) => {
+      // 阻止事件冒泡，避免触发行点击事件
+      if (event) {
+        event.stopPropagation()
+      }
+      
+      console.log('导航到文件夹:', folderName)
+      console.log('当前路径:', currentPath.value)
+      
       const newPath = currentPath.value ? `${currentPath.value}/${folderName}` : folderName
-      router.push({ path: '/browse', query: { path: newPath } })
+      console.log('新路径:', newPath)
+      
+      // 直接调用loadFiles而不是路由跳转，避免路由配置问题
+      loadFiles(newPath)
+      
+      // 更新URL，但不依赖路由跳转
+      const url = new URL(window.location)
+      url.searchParams.set('path', newPath)
+      window.history.pushState({}, '', url)
     }
 
     const handleRowClick = (row) => {
+      console.log('行点击事件:', row)
+      console.log('是否为目录:', row.directory)
+      
       if (row.directory) {
         navigateToFolder(row.name)
       }
@@ -262,6 +311,33 @@ export default {
       const filePath = currentPath.value ? `${currentPath.value}/${file.name}` : file.name
       const url = `/download?path=${encodeURIComponent(filePath)}`
       window.open(url, '_blank')
+    }
+
+    const downloadFolder = (folder) => {
+      console.log('下载文件夹:', folder.name)
+      console.log('当前路径:', currentPath.value)
+      
+      const folderPath = currentPath.value ? `${currentPath.value}/${folder.name}` : folder.name
+      console.log('文件夹完整路径:', folderPath)
+      
+      // 显示下载提示
+      ElMessage.info('正在准备下载文件夹，请稍候...')
+      
+      // 构建下载URL
+      const url = `/download-folder?path=${encodeURIComponent(folderPath)}`
+      
+      // 创建一个临时的a标签来触发下载
+      const link = document.createElement('a')
+      link.href = url
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // 显示成功提示
+      setTimeout(() => {
+        ElMessage.success(`文件夹 "${folder.name}" 下载已开始`)
+      }, 500)
     }
 
     const shareFile = async (file) => {
@@ -418,26 +494,66 @@ export default {
     }
 
     const getFileIcon = (file) => {
-      if (file.directory) return 'FolderOpened'
+      if (file.directory) return FolderOpened
       
       const ext = file.name.split('.').pop()?.toLowerCase()
       
-      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(ext)) return 'Picture'
-      if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].includes(ext)) return 'VideoPlay'
-      if (['mp3', 'wav', 'flac', 'aac', 'ogg'].includes(ext)) return 'Headphone'
-      if (['pdf'].includes(ext)) return 'Document'
-      if (['doc', 'docx'].includes(ext)) return 'Document'
-      if (['xls', 'xlsx'].includes(ext)) return 'Grid'
-      if (['ppt', 'pptx'].includes(ext)) return 'Document'
-      if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'Box'
-      if (['txt', 'md', 'log'].includes(ext)) return 'Document'
+      if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg'].includes(ext)) return Picture
+      if (['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv'].includes(ext)) return VideoPlay
+      if (['mp3', 'wav', 'flac', 'aac', 'ogg'].includes(ext)) return Service
+      if (['pdf'].includes(ext)) return Document
+      if (['doc', 'docx'].includes(ext)) return Document
+      if (['xls', 'xlsx'].includes(ext)) return Grid
+      if (['ppt', 'pptx'].includes(ext)) return Document
+      if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return Box
+      if (['txt', 'md', 'log'].includes(ext)) return Document
       
-      return 'Document'
+      return Document
     }
 
     const getFileIconClass = (file) => {
       if (file.directory) return 'folder-icon'
       return 'file-icon'
+    }
+
+    const navigateToPath = (path) => {
+      console.log('导航到路径:', path)
+      loadFiles(path)
+      
+      // 更新URL
+      const url = new URL(window.location)
+      if (path) {
+        url.searchParams.set('path', path)
+      } else {
+        url.searchParams.delete('path')
+      }
+      window.history.pushState({}, '', url)
+    }
+
+    const downloadCurrentFolder = () => {
+      console.log('下载当前文件夹，路径:', currentPath.value)
+      
+      const folderName = currentPath.value || 'shared_files'
+      
+      // 显示下载提示
+      ElMessage.info('正在准备下载当前文件夹，请稍候...')
+      
+      // 构建下载URL
+      const url = `/download-folder?path=${encodeURIComponent(currentPath.value)}`
+      
+      // 创建一个临时的a标签来触发下载
+      const link = document.createElement('a')
+      link.href = url
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      // 显示成功提示
+      setTimeout(() => {
+        const displayName = currentPath.value || '根目录'
+        ElMessage.success(`文件夹 "${displayName}" 下载已开始`)
+      }, 500)
     }
 
     // 监听路由变化
@@ -447,6 +563,12 @@ export default {
 
     onMounted(() => {
       loadConfig()
+      // 从URL参数中获取初始路径
+      const urlParams = new URLSearchParams(window.location.search)
+      const initialPath = urlParams.get('path') || ''
+      if (initialPath !== (route.query.path || '')) {
+        loadFiles(initialPath)
+      }
     })
 
     return {
@@ -468,8 +590,10 @@ export default {
       loadFiles,
       refreshFileList,
       navigateToFolder,
+      navigateToPath,
       handleRowClick,
       downloadFile,
+      downloadFolder,
       shareFile,
       copyShareUrl,
       selectFiles,
@@ -478,7 +602,8 @@ export default {
       handleDragOver,
       handleDragLeave,
       getFileIcon,
-      getFileIconClass
+      getFileIconClass,
+      downloadCurrentFolder
     }
   }
 }

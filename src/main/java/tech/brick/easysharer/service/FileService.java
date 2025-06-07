@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import tech.brick.easysharer.model.FileInfo;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.nio.file.*;
 import java.time.LocalDateTime;
@@ -160,5 +161,68 @@ public class FileService {
             .size(size)
             .lastModified(lastModified)
             .build();
+    }
+
+    /**
+     * 检查路径是否为目录
+     */
+    public boolean isDirectory(String relativePath) {
+        try {
+            Path basePath = Paths.get(rootPath).toAbsolutePath().normalize();
+            Path targetPath = basePath.resolve(relativePath).normalize();
+            
+            if (!targetPath.startsWith(basePath)) {
+                return false;
+            }
+            
+            return Files.exists(targetPath) && Files.isDirectory(targetPath);
+        } catch (Exception e) {
+            log.error("检查目录失败: {}", relativePath, e);
+            return false;
+        }
+    }
+    
+    /**
+     * 获取文件输入流（用于ZIP打包）
+     */
+    public InputStream getFileInputStream(String relativePath) throws IOException {
+        Path basePath = Paths.get(rootPath).toAbsolutePath().normalize();
+        Path filePath = basePath.resolve(relativePath).normalize();
+        
+        // 安全检查
+        if (!filePath.startsWith(basePath)) {
+            throw new SecurityException("不允许访问根路径外的文件: " + relativePath);
+        }
+        
+        // 检查文件是否存在
+        if (!Files.exists(filePath)) {
+            throw new IOException("文件不存在: " + relativePath);
+        }
+        
+        // 检查是否为文件
+        if (!Files.isRegularFile(filePath)) {
+            throw new IOException("路径不是文件: " + relativePath);
+        }
+        
+        return Files.newInputStream(filePath);
+    }
+    
+    /**
+     * 获取文件最后修改时间
+     */
+    public long getLastModified(String relativePath) throws IOException {
+        Path basePath = Paths.get(rootPath).toAbsolutePath().normalize();
+        Path filePath = basePath.resolve(relativePath).normalize();
+        
+        // 安全检查
+        if (!filePath.startsWith(basePath)) {
+            throw new SecurityException("不允许访问根路径外的文件: " + relativePath);
+        }
+        
+        if (!Files.exists(filePath)) {
+            throw new IOException("文件不存在: " + relativePath);
+        }
+        
+        return Files.getLastModifiedTime(filePath).toMillis();
     }
 } 
