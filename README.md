@@ -35,8 +35,8 @@
 
 3. **运行应用**
    ```bash
-   java -jar target/easy-sharer-0.0.1-SNAPSHOT.jar
-   java -jar easy-sharer-0.0.1-SNAPSHOT.jar --server.port=9090 --file.share.root-path=D:\temp\share --file.upload.enabled=true
+   java -jar target/easy-sharer-0.0.1.jar
+   java -jar easy-sharer-0.0.1.jar --server.port=9090 --file.share.root-path=D:\temp\share --file.upload.enabled=true
 
    ```
 
