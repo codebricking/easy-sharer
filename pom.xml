@@ -10,7 +10,7 @@
     </parent>
     <groupId>tech.brick</groupId>
     <artifactId>easy-sharer</artifactId>
-    <version>0.0.1</version>
+    <version>0.0.3</version>
     <name>easy-sharer</name>
     <description>easy-sharer</description>
     <url/>
